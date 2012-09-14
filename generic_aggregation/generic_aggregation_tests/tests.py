@@ -7,7 +7,8 @@ from django.test import TestCase
 from generic_aggregation import generic_annotate as _generic_annotate, generic_aggregate as _generic_aggregate, generic_filter as _generic_filter
 from generic_aggregation.utils import fallback_generic_annotate, fallback_generic_aggregate, fallback_generic_filter
 from generic_aggregation.generic_aggregation_tests.models import (
-    Food, Rating, CharFieldGFK
+    Food, Rating, CharFieldGFK,
+    Novel, Volume, Chapter,
 )
 
 class SimpleTest(TestCase):
@@ -168,3 +169,48 @@ class FallbackTestCase(SimpleTest):
     
     def generic_filter(self, *args, **kwargs):
         return fallback_generic_filter(*args, **kwargs)
+
+class CrossModelTest(TestCase):
+    def setUp(self):
+        self.bakemonogatari = Novel.objects.create()
+        self.suzumiya = Novel.objects.create()
+
+        volumes = [
+            Volume.objects.create(novel=self.bakemonogatari),
+            Volume.objects.create(novel=self.bakemonogatari),
+            Volume.objects.create(novel=self.suzumiya),
+            Volume.objects.create(novel=self.suzumiya),
+        ]
+
+        for i in range(8):
+            chapter = Chapter.objects.create(volume=volumes[i % 4])
+            Rating.objects.create(rating=i, content_object=chapter)
+
+    def _do_test_call(self, method, obj, **kwargs):
+        return method(
+            Novel.objects.filter(pk=obj.pk),
+            Rating,
+            models.Sum("volume__chapter__ratings__rating"),
+            force_rel_model=Chapter,
+            **kwargs
+        )
+
+    def test_aggregate(self):
+        self.assertEqual(
+            self._do_test_call(_generic_aggregate, self.bakemonogatari),
+            0 + 1 + 4 + 5,
+        )
+        self.assertEqual(
+            self._do_test_call(_generic_aggregate, self.suzumiya),
+            2 + 3 + 6 + 7,
+        )
+
+    def test_annotate(self):
+        self.assertEqual(
+            self._do_test_call(_generic_annotate, self.bakemonogatari)[0].score,
+            0 + 1 + 4 + 5,
+        )
+        self.assertEqual(
+            self._do_test_call(_generic_annotate, self.suzumiya)[0].score,
+            2 + 3 + 6 + 7,
+        )

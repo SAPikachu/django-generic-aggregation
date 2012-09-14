@@ -31,3 +31,14 @@ class Food(models.Model):
 
     def __unicode__(self):
         return self.name
+
+
+class Novel(models.Model):
+    pass
+
+class Volume(models.Model):
+    novel = models.ForeignKey(Novel)
+
+class Chapter(models.Model):
+    volume = models.ForeignKey(Volume)
+    ratings = GenericRelation(Rating)

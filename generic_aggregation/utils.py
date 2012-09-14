@@ -30,34 +30,44 @@ def get_field_type(f):
         raw_type = 'integer'
     return raw_type
 
-def prepare_query(qs_model, generic_qs_model, aggregator, gfk_field):
+def prepare_query(qs_model, generic_qs_model, aggregator, gfk_field, force_rel_model):
     qs = normalize_qs_model(qs_model)
     generic_qs = normalize_qs_model(generic_qs_model)
     
-    model = qs.model
+    model = force_rel_model or qs.model 
+
     generic_model = generic_qs.model
     
     if gfk_field is None:
         gfk_field = get_gfk_field(generic_model)
     
     content_type = ContentType.objects.get_for_model(model)
-    rel_name = aggregator.lookup.split('__', 1)[0]
+    aggregator_parts = aggregator.lookup.split('__')
+    is_cross_model = len(aggregator_parts) > 2
+    rel_name = "__".join(aggregator_parts[:-1])
     
-    try:
-        generic_rel_descriptor = getattr(model, rel_name)
-    except AttributeError:
-        # missing the generic relation, so do fallback query
-        return False
-    
-    rel_model = generic_rel_descriptor.field.rel.to
-    if rel_model != generic_model:
-        raise AttributeError('Model %s does not match the GenericRelation "%s" (%s)' % (
-            generic_model, rel_name, rel_model,
-        ))
+    if not force_rel_model:
+        if is_cross_model:
+            raise AttributeError('Cross-model query needs force_rel_qs_model to be specified')
+
+        try:
+            generic_rel_descriptor = getattr(model, rel_name)
+        except AttributeError:
+            # missing the generic relation, so do fallback query
+            return False
+        
+        rel_model = generic_rel_descriptor.field.rel.to
+        if rel_model != generic_model:
+            raise AttributeError('Model %s does not match the GenericRelation "%s" (%s)' % (
+                generic_model, rel_name, rel_model,
+            ))
     
     pk_field_type = get_field_type(model._meta.pk)
     gfk_field_type = get_field_type(generic_model._meta.get_field(gfk_field.fk_field))
     if pk_field_type != gfk_field_type:
+        if is_cross_model:
+            raise AttributeError("Key type mismatches and fallback method can't be used with cross-model query")
+
         return False
     
     qs = qs.filter(**{
@@ -66,7 +76,7 @@ def prepare_query(qs_model, generic_qs_model, aggregator, gfk_field):
     })
     return qs
 
-def generic_annotate(qs_model, generic_qs_model, aggregator, gfk_field=None, alias='score'):
+def generic_annotate(qs_model, generic_qs_model, aggregator, gfk_field=None, alias='score', force_rel_model=None):
     """
     Find blog entries with the most comments:
     
@@ -98,7 +108,7 @@ def generic_annotate(qs_model, generic_qs_model, aggregator, gfk_field=None, ali
     :param gfk_field: explicitly specify the field w/the gfk
     :param alias: attribute name to use for annotation
     """
-    prepared_query = prepare_query(qs_model, generic_qs_model, aggregator, gfk_field)
+    prepared_query = prepare_query(qs_model, generic_qs_model, aggregator, gfk_field, force_rel_model)
     if prepared_query is not False:
         return prepared_query.annotate(**{alias: aggregator})
     else:
@@ -106,7 +116,7 @@ def generic_annotate(qs_model, generic_qs_model, aggregator, gfk_field=None, ali
         return fallback_generic_annotate(qs_model, generic_qs_model, aggregator, gfk_field, alias)
 
 
-def generic_aggregate(qs_model, generic_qs_model, aggregator, gfk_field=None):
+def generic_aggregate(qs_model, generic_qs_model, aggregator, gfk_field=None, force_rel_model=None):
     """
     Find total number of comments on blog entries:
     
@@ -134,7 +144,7 @@ def generic_aggregate(qs_model, generic_qs_model, aggregator, gfk_field=None):
     :param aggregator: an aggregation, from django.db.models, e.g. Count('id') or Avg('rating')
     :param gfk_field: explicitly specify the field w/the gfk
     """
-    prepared_query = prepare_query(qs_model, generic_qs_model, aggregator, gfk_field)
+    prepared_query = prepare_query(qs_model, generic_qs_model, aggregator, gfk_field, force_rel_model)
     if prepared_query is not False:
         return prepared_query.aggregate(aggregate=aggregator)['aggregate']
     else:

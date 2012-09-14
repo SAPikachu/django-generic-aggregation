@@ -48,7 +48,7 @@ def prepare_query(qs_model, generic_qs_model, aggregator, gfk_field, force_rel_m
     
     if not force_rel_model:
         if is_cross_model:
-            raise AttributeError('Cross-model query needs force_rel_qs_model to be specified')
+            raise AttributeError('Cross-model query needs force_rel_model to be specified')
 
         try:
             generic_rel_descriptor = getattr(model, rel_name)

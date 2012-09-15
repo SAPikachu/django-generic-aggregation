@@ -12,6 +12,11 @@ else:
     db_engine = 'django.db.backends.sqlite3'
     db_name = ''
 
+log_sql = False
+if '--log-sql' in sys.argv:
+    log_sql = True
+    sys.argv.remove('--log-sql')
+
 if not settings.configured:
     settings.configure(
         DATABASES = {
@@ -24,7 +29,38 @@ if not settings.configured:
             'django.contrib.contenttypes',
             'generic_aggregation.generic_aggregation_tests',
         ],
+        DEBUG = log_sql,
+        LOGGING = {
+            'version': 1,
+            'disable_existing_loggers': True,
+            'handlers': {
+                'console': {
+                    'level': 'DEBUG',
+                    'class': 'logging.StreamHandler',
+                    'formatter': 'simple',
+                },
+            },
+            'formatters': {
+                'simple': {
+                    'format': '%(levelname)s %(message)s',
+                },
+            },
+            'loggers': {
+                'django': {
+                    'handlers': ['console'],
+                    'level': 'DEBUG',
+                },
+            },
+        } if log_sql else {},
     )
+
+    if log_sql:
+        from django.db import connection
+        connection.use_debug_cursor = True
+
+        # Django won't configure for us!
+        from logging.config import dictConfig
+        dictConfig(settings.LOGGING)
 
 from django.test.utils import get_runner
 

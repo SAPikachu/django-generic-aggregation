@@ -30,7 +30,7 @@ def get_field_type(f):
         raw_type = 'integer'
     return raw_type
 
-def prepare_query(qs_model, generic_qs_model, aggregator, gfk_field, force_rel_model):
+def prepare_query(qs_model, generic_qs_model, aggregator, gfk_field, force_rel_model, rel_slice_pos):
     qs = normalize_qs_model(qs_model)
     generic_qs = normalize_qs_model(generic_qs_model)
     
@@ -44,7 +44,7 @@ def prepare_query(qs_model, generic_qs_model, aggregator, gfk_field, force_rel_m
     content_type = ContentType.objects.get_for_model(model)
     aggregator_parts = aggregator.lookup.split('__')
     is_cross_model = len(aggregator_parts) > 2
-    rel_name = "__".join(aggregator_parts[:-1])
+    rel_name = "__".join(aggregator_parts[:rel_slice_pos])
     
     if not force_rel_model:
         if is_cross_model:
@@ -76,7 +76,7 @@ def prepare_query(qs_model, generic_qs_model, aggregator, gfk_field, force_rel_m
     })
     return qs
 
-def generic_annotate(qs_model, generic_qs_model, aggregator, gfk_field=None, alias='score', force_rel_model=None):
+def generic_annotate(qs_model, generic_qs_model, aggregator, gfk_field=None, alias='score', force_rel_model=None, rel_slice_pos=-1):
     """
     Find blog entries with the most comments:
     
@@ -108,7 +108,7 @@ def generic_annotate(qs_model, generic_qs_model, aggregator, gfk_field=None, ali
     :param gfk_field: explicitly specify the field w/the gfk
     :param alias: attribute name to use for annotation
     """
-    prepared_query = prepare_query(qs_model, generic_qs_model, aggregator, gfk_field, force_rel_model)
+    prepared_query = prepare_query(qs_model, generic_qs_model, aggregator, gfk_field, force_rel_model, rel_slice_pos)
     if prepared_query is not False:
         return prepared_query.annotate(**{alias: aggregator})
     else:
@@ -116,7 +116,7 @@ def generic_annotate(qs_model, generic_qs_model, aggregator, gfk_field=None, ali
         return fallback_generic_annotate(qs_model, generic_qs_model, aggregator, gfk_field, alias)
 
 
-def generic_aggregate(qs_model, generic_qs_model, aggregator, gfk_field=None, force_rel_model=None):
+def generic_aggregate(qs_model, generic_qs_model, aggregator, gfk_field=None, force_rel_model=None, rel_slice_pos=-1):
     """
     Find total number of comments on blog entries:
     
@@ -144,7 +144,7 @@ def generic_aggregate(qs_model, generic_qs_model, aggregator, gfk_field=None, fo
     :param aggregator: an aggregation, from django.db.models, e.g. Count('id') or Avg('rating')
     :param gfk_field: explicitly specify the field w/the gfk
     """
-    prepared_query = prepare_query(qs_model, generic_qs_model, aggregator, gfk_field, force_rel_model)
+    prepared_query = prepare_query(qs_model, generic_qs_model, aggregator, gfk_field, force_rel_model, rel_slice_pos)
     if prepared_query is not False:
         return prepared_query.aggregate(aggregate=aggregator)['aggregate']
     else:

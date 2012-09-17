@@ -42,3 +42,8 @@ class Volume(models.Model):
 class Chapter(models.Model):
     volume = models.ForeignKey(Volume)
     ratings = GenericRelation(Rating)
+
+class RatingDetail(models.Model):
+    rating = models.ForeignKey(Rating, related_name="details")
+    points = models.IntegerField()
+

@@ -8,7 +8,7 @@ from generic_aggregation import generic_annotate as _generic_annotate, generic_a
 from generic_aggregation.utils import fallback_generic_annotate, fallback_generic_aggregate, fallback_generic_filter
 from generic_aggregation.generic_aggregation_tests.models import (
     Food, Rating, CharFieldGFK,
-    Novel, Volume, Chapter,
+    Novel, Volume, Chapter, RatingDetail,
 )
 
 class SimpleTest(TestCase):
@@ -184,13 +184,22 @@ class CrossModelTest(TestCase):
 
         for i in range(8):
             chapter = Chapter.objects.create(volume=volumes[i % 4])
-            Rating.objects.create(rating=i, content_object=chapter)
+            rating = Rating.objects.create(rating=i, content_object=chapter)
+            RatingDetail.objects.create(points=i*10, rating=rating)
+            RatingDetail.objects.create(points=i*20, rating=rating)
 
-    def _do_test_call(self, method, obj, **kwargs):
+
+    def _do_test_call(
+        self, 
+        method, 
+        obj, 
+        aggregator=models.Sum("volume__chapter__ratings__rating"),
+        **kwargs
+    ):
         return method(
             Novel.objects.filter(pk=obj.pk),
             Rating,
-            models.Sum("volume__chapter__ratings__rating"),
+            aggregator,
             force_rel_model=Chapter,
             **kwargs
         )
@@ -213,4 +222,24 @@ class CrossModelTest(TestCase):
         self.assertEqual(
             self._do_test_call(_generic_annotate, self.suzumiya)[0].score,
             2 + 3 + 6 + 7,
+        )
+
+    def test_cross_model_after_generic_relation(self):
+        self.assertEqual(
+            self._do_test_call(
+                _generic_aggregate, 
+                self.bakemonogatari,
+                models.Sum("volume__chapter__ratings__details__points"),
+                rel_slice_pos=-2,
+            ),
+            (0 + 1 + 4 + 5) * 30,
+        )
+        self.assertEqual(
+            self._do_test_call(
+                _generic_aggregate, 
+                self.suzumiya,
+                models.Sum("volume__chapter__ratings__details__points"),
+                rel_slice_pos=-2,
+            ),
+            (2 + 3 + 6 + 7) * 30,
         )
